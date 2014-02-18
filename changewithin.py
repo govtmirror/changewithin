@@ -1,4 +1,4 @@
-import time, json, requests, os, sys
+import time, re, json, requests, os, sys
 from ConfigParser import ConfigParser
 from lxml import etree
 from datetime import datetime
@@ -6,21 +6,21 @@ import pystache
 
 from lib import (
     get_bbox, getstate, getosc, point_in_box, point_in_poly,
-    hasbuildingtag, getaddresstags, hasaddresschange, loadChangeset,
-    addchangeset, html_tmpl, text_tmpl
+    getaddresstags, hasaddresschange, loadChangeset,
+    addchangeset, html_summary_tmpl, html_headers_tmpl, html_changes_tmpl
     )
 
 dir_path = os.path.dirname(os.path.abspath(__file__))
 
 #
 # Configure for use. See config.ini for details.
-#
+# 
 config = ConfigParser()
 config.read(os.path.join(dir_path, 'config.ini'))
 
-#
+# -------------------------------------------
 # Environment variables override config file.
-#
+# -------------------------------------------
 if 'AREA_GEOJSON' in os.environ:
     config.set('area', 'geojson', os.environ['AREA_GEOJSON'])
 
@@ -33,17 +33,19 @@ if 'MAILGUN_API_KEY' in os.environ:
 if 'EMAIL_RECIPIENTS' in os.environ:
     config.set('email', 'recipients', os.environ['EMAIL_RECIPIENTS'])
 
-#
+# ------------------------------------------
 # Get started with the area of interest (AOI).
-#
-
+# ------------------------------------------
 aoi_href = config.get('area', 'geojson')
+# Convert tags from configuration from string to array
+aoi_tags = config.get('area', 'tags')
+tags = re.sub(r'\s', '', aoi_tags).split(',')
+
 aoi_file = os.path.join(dir_path, aoi_href)
 
 if os.path.exists(aoi_file):
     # normal file, available locally
     aoi = json.load(open(aoi_file))
-
 else:
     # possible remote file, try to request it
     aoi = requests.get(aoi_href).json()
@@ -52,18 +54,23 @@ aoi_poly = aoi['features'][0]['geometry']['coordinates'][0]
 aoi_box = get_bbox(aoi_poly)
 sys.stderr.write('getting state\n')
 osc_file = getosc()
-
 sys.stderr.write('reading file\n')
 
+# For node IDs
 nids = set()
 changesets = {}
 stats = {}
-stats['buildings'] = 0
 stats['addresses'] = 0
+# Prepare changesets and stats to hold changes by tag name
+for tag in tags:
+    stats[tag] = 0
+    changesets[tag]= {}
 
 sys.stderr.write('finding points\n')
 
+# ------------------------------------------
 # Find nodes that fall within specified area
+# ------------------------------------------
 context = iter(etree.iterparse(osc_file, events=('start', 'end')))
 event, root = context.next()
 for event, n in context:
@@ -82,21 +89,33 @@ for event, n in context:
                 # Capture address changes
                 if version != 1:
                     if hasaddresschange(nid, addr_tags, version, 'node'):
-                        addchangeset(n, cid, changesets)
+                        addchangeset(n, cid, changesets, '')
                         changesets[cid]['nids'].add(nid)
                         changesets[cid]['addr_chg_nd'].add(nid)
                         stats['addresses'] += 1
                 elif len(addr_tags):
-                    addchangeset(n, cid, changesets)
+                    addchangeset(n, cid, changesets, '')
                     changesets[cid]['nids'].add(nid)
                     changesets[cid]['addr_chg_nd'].add(nid)
                     stats['addresses'] += 1
+    # Clear memory
     n.clear()
     root.clear()
 
-sys.stderr.write('finding changesets\n')
+# Exit function if nids is empty
+if len(nids) == 0:
+    sys.exit("No nodes from previous day's changeset fall within"+aoi_file)
 
+# ----------------------------------------------------------------------------------------
 # Find ways that contain nodes that were previously determined to fall within specified area
+# ----------------------------------------------------------------------------------------
+
+sys.stderr.write('finding changesets\n')
+# Keep unique changeset IDs
+cids = []
+# Keep tags that appear (versus tags that are searched for, set in configuration file)
+occurringtags =[]
+# Parse through ways
 context = iter(etree.iterparse(osc_file, events=('start', 'end')))
 event, root = context.next()
 for event, w in context:
@@ -105,62 +124,111 @@ for event, w in context:
             relevant = False
             cid = w.get('changeset')
             wid = w.get('id', -1)
-            
-            # Only if the way has 'building' tag
-            if hasbuildingtag(w):
-                for nd in w.iterfind('./nd'):
-                    if nd.get('ref', -2) in nids:
-                        relevant = True
-                        addchangeset(w, cid, changesets)
-                        nid = nd.get('ref', -2)
-                        changesets[cid]['nids'].add(nid)
-                        changesets[cid]['wids'].add(wid)
+            for x in w.xpath(".//tag"):
+                # Only if the way has tags from configuration file
+                if x.get('k') in tags:
+                    t = x.get('k')
+                    for nd in w.iterfind('./nd'):
+                        if nd.get('ref', -2) in nids:
+                            relevant = True
+                            print 'hey'
+                            if t not in occurringtags:
+                                occurringtags.append(t)
+                            if cid not in cids:
+                                cids.append(cid)
+                            addchangeset(w, cid, changesets[t], t)
+                            nid = nd.get('ref', -2)
+                            changesets[t][cid]['nids'].add(nid)
+                            changesets[t][cid]['wids'].add(wid)
             if relevant:
-                stats['buildings'] += 1
                 wtags = w.findall(".//tag[@k]")
+                t = ''
+                for tag in wtags:
+                    if tag.get('k') in tags:
+                        # Add totals in stats object for output
+                        print t, 'tag'
+                        stats[tag.get('k')] += 1
+                        t = tag.get('k')
                 version = int(w.get('version'))
                 addr_tags = getaddresstags(wtags)
                 
                 # Capture address changes
                 if version != 1:
                     if hasaddresschange(wid, addr_tags, version, 'way'):
-                        changesets[cid]['addr_chg_way'].add(wid)
+                        changesets[t][cid]['addr_chg_way'].add(wid)
                         stats['addresses'] += 1
                 elif len(addr_tags):
-                    changesets[cid]['addr_chg_way'].add(wid)
+                    changesets[t][cid]['addr_chg_way'].add(wid)
                     stats['addresses'] += 1
     w.clear()
     root.clear()
 
-changesets = map(loadChangeset, changesets.values())
+# Create an array for each changeset ID
+finalobject = {}
+for c in cids:
+    finalobject[c] = []
 
-stats['total'] = len(changesets)
+for tag in occurringtags:
+    values = map(loadChangeset, changesets[tag].values())
+    for each in values: 
+        for c in cids:
+            if c == each['id']:
+                finalobject[c].append(each)
 
-if len(changesets) > 1000:
+writeout = json.dumps(finalobject, sort_keys=True, separators=(',',':'))
+f_out = open('testing.json', 'wb')
+f_out.writelines(writeout)
+f_out.close()
+
+# Length of changeset IDs is total number of changesets
+stats['total'] = len(cids)
+if len(cids) > 1000:
     changesets = changesets[:999]
     stats['limit_exceed'] = 'Note: For performance reasons only the first 1000 changesets are displayed.'
-    
+
 now = datetime.now()
 
-html_version = pystache.render(html_tmpl, {
-    'changesets': changesets,
-    'stats': stats,
-    'date': now.strftime("%B %d, %Y")
-})
 
-text_version = pystache.render(text_tmpl, {
-    'changesets': changesets,
-    'stats': stats,
-    'date': now.strftime("%B %d, %Y")
-})
 
+# ------------------------------------------
+# Functions for rendering html for email
+# ------------------------------------------
+def renderChanges(each):
+    change = pystache.render(html_changes_tmpl, {
+        'changesets': each,
+    })
+    return change
+
+def rendertemplate():
+    body = ''
+    summary = pystache.render(html_summary_tmpl, {
+            'stats': stats,
+            'date': now.strftime("%B %d, %Y")
+        })
+    # Add summary
+    body+=summary
+    for c in cids:
+        header = pystache.render(html_headers_tmpl, {
+            'changeset': c,
+        })
+        # Add header for each changeset ID
+        body+=header
+        for each in finalobject[c]:
+            # Add changes, grouped by tags
+            body+=renderChanges(each)
+    return body
+
+html_version = rendertemplate()
+
+# ---------------------------------------------------
+# Outputs: email and html file
+# ---------------------------------------------------
 resp = requests.post(('https://api.mailgun.net/v2/%s/messages' % config.get('mailgun', 'domain')),
     auth = ('api', config.get('mailgun', 'api_key')),
     data = {
             'from': 'Change Within <changewithin@%s>' % config.get('mailgun', 'domain'),
             'to': config.get('email', 'recipients').split(),
-            'subject': 'OSM building and address changes %s' % now.strftime("%B %d, %Y"),
-            'text': text_version,
+            'subject': 'OSM changes %s' % now.strftime("%B %d, %Y"),
             "html": html_version,
     })
 
@@ -168,8 +236,7 @@ f_out = open('osm_change_report_%s.html' % now.strftime("%m-%d-%y"), 'w')
 f_out.write(html_version.encode('utf-8'))
 f_out.close()
 
+# Remove file
 os.unlink(osc_file)
 
 # print html_version
-
-# print resp, resp.text
