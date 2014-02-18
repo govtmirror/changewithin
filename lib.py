@@ -109,9 +109,6 @@ def getExtent(s):
         
     return extent
 
-def hasbuildingtag(n):
-    return n.find(".//tag[@k='building']") is not None
-    
 def getaddresstags(tags):
     addr_tags = []
     for t in tags:
@@ -135,6 +132,7 @@ def hasaddresschange(gid, addr, version, elem):
     return False
 
 def loadChangeset(changeset):
+    changeset['tag'] =  changeset['tag']
     changeset['wids'] = list(changeset['wids'])
     changeset['nids'] = list(changeset['nids'])
     changeset['addr_chg_nd'] = list(changeset['addr_chg_nd'])
@@ -152,12 +150,14 @@ def loadChangeset(changeset):
     changeset['map_img'] = 'http://api.tiles.mapbox.com/v3/lxbarth.map-lxoorpwz/%s,%s,%s/300x225.png' % (extent['lon'], extent['lat'], extent['zoom'])
     changeset['map_link'] = 'http://www.openstreetmap.org/?lat=%s&lon=%s&zoom=%s&layers=M' % (extent['lat'], extent['lon'], extent['zoom'])
     changeset['addr_count'] = len(changeset['addr_chg_way']) + len(changeset['addr_chg_nd'])
-    changeset['bldg_count'] = len(changeset['wids'])
+    # the building count is determined by length of way IDs that got through 
+    changeset['count'] = len(changeset['wids'])
     return changeset
 
-def addchangeset(el, cid, changesets):
+def addchangeset(el, cid, changesets, t):
     if not changesets.get(cid, False):
         changesets[cid] = {
+            'tag': t,
             'id': cid,
             'user': el.get('user'),
             'uid': el.get('uid'),
@@ -165,13 +165,13 @@ def addchangeset(el, cid, changesets):
             'nids': set(),
             'addr_chg_way': set(),
             'addr_chg_nd': set()
-        }
+         }
 
 #
 # Templates for generated emails.
 #
 
-html_tmpl = '''
+html_summary_tmpl = '''
 <div style='font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;color:#333;max-width:600px;'>
 <p style='float:right;'>{{date}}</p>
 <h1 style='margin-bottom:10px;'>Summary</h1>
@@ -179,50 +179,43 @@ html_tmpl = '''
 <ul style='font-size:15px;line-height:17px;list-style:none;margin-left:0;padding-left:0;'>
 <li>Total changesets: <strong>{{total}}</strong></li>
 <li>Total address changes: <strong>{{addresses}}</strong></li>
-<li>Total building footprint changes: <strong>{{buildings}}</strong></li>
+<li>Total building footprint changes: <strong>{{building}}</strong></li>
+<li>Total highway changes: <strong>{{highway}}</strong></li>
+<li>Total amenity changes: <strong>{{amenity}}</strong></li>
+
 </ul>
 {{#limit_exceed}}
 <p style='font-size:13px;font-style:italic;'>{{limit_exceed}}</p>
 {{/limit_exceed}}
 {{/stats}}
+</div>
+'''
+
+html_headers_tmpl = '''
+{{#changeset}}
+<div style='font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;color:#333;max-width:600px;'>
+
+<h2 style='border-bottom:1px solid #ddd;padding-top:15px;padding-bottom:8px;'>Changeset <a href='http://openstreetmap.org/browse/changeset/{{changeset}}' style='text-decoration:none;color:#3879D9;'>#{{changeset}}</a></h2>
+
+</div>
+{{/changeset}}
+'''
+
+html_changes_tmpl = '''
 {{#changesets}}
-<h2 style='border-bottom:1px solid #ddd;padding-top:15px;padding-bottom:8px;'>Changeset <a href='http://openstreetmap.org/browse/changeset/{{id}}' style='text-decoration:none;color:#3879D9;'>#{{id}}</a></h2>
+<div style='font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;color:#333;max-width:600px;'>
+{{#tag}}<h3 style='padding-top:10px;padding-bottom:5px;'>Tag = '{{tag}}'</h3>{{/tag}}
 <p style='font-size:14px;line-height:17px;margin-bottom:20px;'>
 <a href='http://openstreetmap.org/user/{{#details}}{{user}}{{/details}}' style='text-decoration:none;color:#3879D9;font-weight:bold;'>{{#details}}{{user}}{{/details}}</a>: {{comment}}
 </p>
 <p style='font-size:14px;line-height:17px;margin-bottom:0;'>
-{{#bldg_count}}Changed buildings ({{bldg_count}}): {{#wids}}<a href='http://openstreetmap.org/browse/way/{{.}}/history' style='text-decoration:none;color:#3879D9;'>#{{.}}</a> {{/wids}}{{/bldg_count}}
+{{#count}}Changed ways ({{count}}): {{#wids}}<a href='http://openstreetmap.org/browse/way/{{.}}/history' style='text-decoration:none;color:#3879D9;'>#{{.}}</a> {{/wids}}{{/count}}
 </p>
 <p style='font-size:14px;line-height:17px;margin-top:5px;margin-bottom:20px;'>
 {{#addr_count}}Changed addresses ({{addr_count}}): {{#addr_chg_nd}}<a href='http://openstreetmap.org/browse/node/{{.}}/history' style='text-decoration:none;color:#3879D9;'>#{{.}}</a> {{/addr_chg_nd}}{{#addr_chg_way}}<a href='http://openstreetmap.org/browse/way/{{.}}/history' style='text-decoration:none;color:#3879D9;'>#{{.}}</a> {{/addr_chg_way}}{{/addr_count}}
 </p>
+
 <a href='{{map_link}}'><img src='{{map_img}}' style='border:1px solid #ddd;' /></a>
 {{/changesets}}
 </div>
-'''
-
-text_tmpl = '''
-### Summary ###
-{{date}}
-
-{{#stats}}
-Total changesets: {{total}}
-Total building footprint changes: {{buildings}}
-Total address changes: {{addresses}}
-{{#limit_exceed}}
-
-{{limit_exceed}}
-
-{{/limit_exceed}}
-{{/stats}}
-
-{{#changesets}}
---- Changeset #{{id}} ---
-URL: http://openstreetmap.org/browse/changeset/{{id}}
-User: http://openstreetmap.org/user/{{#details}}{{user}}{{/details}}
-Comment: {{comment}}
-
-{{#bldg_count}}Changed buildings ({{bldg_count}}): {{wids}}{{/bldg_count}}
-{{#addr_count}}Changed addresses ({{addr_count}}): {{addr_chg_nd}} {{addr_chg_way}}{{/addr_count}}
-{{/changesets}}
 '''
