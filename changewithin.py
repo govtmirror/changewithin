@@ -7,7 +7,7 @@ import pystache
 from lib import (
     get_bbox, getstate, getosc, point_in_box, point_in_poly,
     getaddresstags, hasaddresschange, loadChangeset,
-    addchangeset, html_summary_tmpl, html_headers_tmpl, html_changes_tmpl
+    addchangeset, html_summary_tmpl, html_headers_tmpl, html_changes_tmpl, text_summary_tmpl,text_headers_tmpl, text_changes_tmpl
     )
 
 dir_path = os.path.dirname(os.path.abspath(__file__))
@@ -54,7 +54,7 @@ aoi_poly = aoi['features'][0]['geometry']['coordinates'][0]
 aoi_box = get_bbox(aoi_poly)
 sys.stderr.write('getting state\n')
 osc_file = getosc()
-sys.stderr.write('reading file\n')
+sys.stderr.write('reading file located at'+ aoi_file+'\n')
 
 # For node IDs
 nids = set()
@@ -123,10 +123,10 @@ context = iter(etree.iterparse(osc_file, events=('start', 'end')))
 event, root = context.next()
 for event, w in context:
     if event == 'start':
+        # Find ways
         if w.tag == 'way':
             relevant = False
             cid = w.get('changeset')
-
             wid = w.get('id', -1)
             for x in w.xpath(".//tag"):
                 # Only if the way has tags from configuration file
@@ -162,6 +162,7 @@ for event, w in context:
                 elif len(addr_tags):
                     changesets[t][cid]['addr_chg_way'].add(wid)
                     stats['addresses'] += 1
+        # Find nodes
         if w.tag == 'node':
             relevant = False
             cid = w.get('changeset')
@@ -179,7 +180,6 @@ for event, w in context:
                             cids.append(cid)
                         addchangeset(w, cid, changesets[t], t)
                         changesets[t][cid]['nids'].add(nid)
-                        # changesets[t][cid]['wids'].add(wid)
             if relevant:
                 wtags = w.findall(".//tag[@k]")
                 t = ''
@@ -219,19 +219,33 @@ if len(cids) > 1000:
 
 now = datetime.now()
 
-
 # ------------------------------------------
 # Functions for rendering html for email
 # ------------------------------------------
-def renderChanges(each):
-    change = pystache.render(html_changes_tmpl, {
-        'changesets': each,
-    })
+def renderChanges(each, type):
+    changestemplate = str(type) +'_changes_tmpl'
+    if type == 'html':
+        change = pystache.render(html_changes_tmpl, {
+            'changesets': each,
+        })
+    elif type == 'text':
+        change = pystache.render(text_changes_tmpl, {
+            'changesets': each,
+        })
     return change
 
-def rendertemplate():
+def rendertemplate(type):
     body = ''
-    summary = pystache.render(html_summary_tmpl, {
+    if type == 'html':
+        summary = pystache.render(html_summary_tmpl, {
+            'total': stats['total'],
+            'addr': stats['addresses'],
+            'nodes': stats['nodes'],
+            'ways': stats['ways'],
+            'date': now.strftime("%B %d, %Y")
+        })
+    elif type == 'text':
+        summary = pystache.render(text_summary_tmpl, {
             'total': stats['total'],
             'addr': stats['addresses'],
             'nodes': stats['nodes'],
@@ -241,35 +255,44 @@ def rendertemplate():
     # Add summary
     body+=summary
     for c in cids:
-        header = pystache.render(html_headers_tmpl, {
-            'changeset': c,
-        })
+        if type == 'html':
+            header = pystache.render(html_headers_tmpl, {
+                'changeset': c,
+            })
+        elif type == 'text':
+            header = pystache.render(text_headers_tmpl, {
+                'changeset': c,
+            })
         # Add header for each changeset ID
         body+=header
         for each in finalobject[c]:
             # Add changes, grouped by tags
-            body+=renderChanges(each)
+            body+=renderChanges(each, type)
     return body
 
-html_version = rendertemplate()
+html_version = rendertemplate('html')
+text_version = rendertemplate('text')
 
 # ---------------------------------------------------
-# Outputs: email and html file
+# Outputs: html file and emails
 # ---------------------------------------------------
-# resp = requests.post(('https://api.mailgun.net/v2/%s/messages' % config.get('mailgun', 'domain')),
-#     auth = ('api', config.get('mailgun', 'api_key')),
-#     data = {
-#             'from': 'Change Within <changewithin@%s>' % config.get('mailgun', 'domain'),
-#             'to': config.get('email', 'recipients').split(),
-#             'subject': 'OSM changes %s' % now.strftime("%B %d, %Y"),
-#             "html": html_version,
-#     })
-
+# Output html version as file
 f_out = open('osm_change_report_%s.html' % now.strftime("%m-%d-%y"), 'w')
 f_out.write(html_version.encode('utf-8'))
 f_out.close()
 
-# Remove file
-#os.unlink(osc_file)
+resp = requests.post(('https://api.mailgun.net/v2/%s/messages' % config.get('mailgun', 'domain')),
+    auth = ('api', config.get('mailgun', 'api_key')),
+    data = {
+            'from': 'Change Within <changewithin@%s>' % config.get('mailgun', 'domain'),
+            'to': config.get('email', 'recipients').split(),
+            'subject': 'OSM changes %s' % now.strftime("%B %d, %Y"),
+            "html": html_version,
+    })
 
-# print html_version
+# Remove OpenStreetMap changesets file
+os.unlink(osc_file)
+
+# Print outputs to terminal
+#print html_version
+print text_version

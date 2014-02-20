@@ -169,10 +169,11 @@ def addchangeset(el, cid, changesets, t):
             'addr_chg_nd': set()
          }
 
-#
+# ------------------------------
 # Templates for generated emails.
-#
+# ------------------------------
 
+# HTML
 html_summary_tmpl = '''
 <div style='font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;color:#333;max-width:600px;'>
 <p style='float:right;'>{{date}}</p>
@@ -198,6 +199,19 @@ html_summary_tmpl = '''
 <li>Total 'shop' changes: <strong>{{shop}}</strong></li>
 </ul>
 {{/ways}}
+
+{{#nodes}}
+<h3>Nodes</h3>
+<ul style='font-size:15px;line-height:17px;list-style:none;margin-left:0;padding-left:0;'>
+<li>Total 'building' changes: <strong>{{building}}</strong></li>
+<li>Total 'highway' changes: <strong>{{highway}}</strong></li>
+<li>Total 'leisure' changes: <strong>{{leisure}}</strong></li>
+<li>Total 'man_made' changes: <strong>{{man_made}}</strong></li>
+<li>Total 'amenity' changes: <strong>{{amenity}}</strong></li>
+<li>Total 'tourism' changes: <strong>{{tourism}}</strong></li>
+<li>Total 'shop' changes: <strong>{{shop}}</strong></li>
+</ul>
+{{/nodes}}
 
 {{#limit_exceed}}
 <p style='font-size:13px;font-style:italic;'>{{limit_exceed}}</p>
@@ -237,4 +251,64 @@ html_changes_tmpl = '''
 <a href='{{map_link}}'><img src='{{map_img}}' style='border:1px solid #ddd;' /></a>
 {{/changesets}}
 </div>
+'''
+
+# Text
+text_summary_tmpl = '''
+### Summary ###
+{{date}}
+{{#total}}
+Total changesets: {{total}}
+{{/total}}
+{{#addr}}
+Total address changes: {{addr}}
+{{/addr}}
+
+{{#ways}}
+-----------
+Ways: 
+Total 'building' changes:{{building}}
+Total 'highway' changes: {{highway}}
+Total 'leisure' changes: {{leisure}}
+Total 'man_made' changes: {{man_made}}
+Total 'amenity' changes: {{amenity}}
+Total 'tourism' changes: {{tourism}}
+Total 'shop' changes: {{shop}}
+{{/ways}}
+
+{{#nodes}}
+------------
+Nodes:
+Total 'building' changes:{{building}}
+Total 'highway' changes: {{highway}}
+Total 'leisure' changes: {{leisure}}
+Total 'man_made' changes: {{man_made}}
+Total 'amenity' changes: {{amenity}}
+Total 'tourism' changes: {{tourism}}
+Total 'shop' changes: {{shop}}
+{{/nodes}}
+
+{{#limit_exceed}}
+{{limit_exceed}}
+{{/limit_exceed}}
+'''
+
+
+text_headers_tmpl = '''
+{{#changeset}}
+--- Changeset #{{changeset}} ---
+URL: http://openstreetmap.org/browse/changeset/{{changeset}}
+{{/changeset}}
+'''
+
+
+text_changes_tmpl = '''
+{{#changesets}}
+User: http://openstreetmap.org/user/{{#details}}{{user}}{{/details}}
+Comment: {{comment}}
+{{#tag}}Tag = '{{tag}}'{{/tag}}
+{{#node_count}}Changed buildings ({{node_count}}): {{wids}}{{/node_count}}
+{{#way_count}}Changed buildings ({{way_count}}): {{wids}}{{/way_count}}
+{{#addr_count}}Changed addresses ({{addr_count}}): {{addr_chg_nd}} {{addr_chg_way}}{{/addr_count}}
+{{/changesets}}
 '''
