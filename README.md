@@ -11,7 +11,7 @@ This script was forked from the [osmlab/changewithin](https://github.com/osmlab/
  - Script detects changes in national park
  - Abstracted tag entry to configuration file, enabling user to filter contributions captured by the script, for example, only 'highway' and 'amenity'
  - Script now checks for ways **and nodes** that match tags set in configuration file
- - Improved output layout with detected contributions grouped by changeset, then by tag, see [example output](http://bl.ocks.org/davejohn/raw/1f843639983d55f4116a/). 
+ - Improved output layout with detected contributions grouped by changeset, then by tag, see [example output](http://bl.ocks.org/davejohn/raw/1f843639983d55f4116a/) from February 19, 2014. 
 
 
 ### Configuration
@@ -45,7 +45,7 @@ As this screenshot shows, `olympic-park-large.geojson` extends beyond the bounda
 
 ![](http://i.imgur.com/AOYM2H8.png)
 
-The actual park, stored in this repository as `olympic-park.geojson`, will return less results since it covers less area. 
+The actual park, stored in this repository as `olympic-park.geojson`, will return less results since there are infrequent contributions to parks on OSM.
 
 You can also run the script against urban areas. Add `nyc.geojson` to the configuration file to see the relatively larger amount of contributions captured.
 
