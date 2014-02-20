@@ -105,9 +105,9 @@ for event, n in context:
     n.clear()
     root.clear()
 
-# Exit function if nids is empty
-if len(nids) == 0:
-    sys.exit("No nodes from day's changesets fall within"+aoi_file)
+# Exit function if nids is empty, this will not send email
+#if len(nids) == 0:
+#    sys.exit("No nodes from day's changesets fall within"+aoi_file)
 
 # ----------------------------------------------------------------------------------------
 # Find ways that contain nodes that were previously determined to fall within specified area
