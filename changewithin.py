@@ -61,9 +61,12 @@ nids = set()
 changesets = {}
 stats = {}
 stats['addresses'] = 0
+stats['ways'] = {}
+stats['nodes'] = {}
 # Prepare changesets and stats to hold changes by tag name
 for tag in tags:
-    stats[tag] = 0
+    stats['nodes'][tag]  = 0
+    stats['ways'][tag] = 0
     changesets[tag]= {}
 
 sys.stderr.write('finding points\n')
@@ -104,7 +107,7 @@ for event, n in context:
 
 # Exit function if nids is empty
 if len(nids) == 0:
-    sys.exit("No nodes from previous day's changeset fall within"+aoi_file)
+    sys.exit("No nodes from day's changesets fall within"+aoi_file)
 
 # ----------------------------------------------------------------------------------------
 # Find ways that contain nodes that were previously determined to fall within specified area
@@ -123,6 +126,7 @@ for event, w in context:
         if w.tag == 'way':
             relevant = False
             cid = w.get('changeset')
+
             wid = w.get('id', -1)
             for x in w.xpath(".//tag"):
                 # Only if the way has tags from configuration file
@@ -131,7 +135,6 @@ for event, w in context:
                     for nd in w.iterfind('./nd'):
                         if nd.get('ref', -2) in nids:
                             relevant = True
-                            print 'hey'
                             if t not in occurringtags:
                                 occurringtags.append(t)
                             if cid not in cids:
@@ -146,8 +149,7 @@ for event, w in context:
                 for tag in wtags:
                     if tag.get('k') in tags:
                         # Add totals in stats object for output
-                        print t, 'tag'
-                        stats[tag.get('k')] += 1
+                        stats['ways'][tag.get('k')] += 1
                         t = tag.get('k')
                 version = int(w.get('version'))
                 addr_tags = getaddresstags(wtags)
@@ -160,6 +162,35 @@ for event, w in context:
                 elif len(addr_tags):
                     changesets[t][cid]['addr_chg_way'].add(wid)
                     stats['addresses'] += 1
+        if w.tag == 'node':
+            relevant = False
+            cid = w.get('changeset')
+            nid = w.get('id', -1)
+            for x in w.xpath(".//tag"):
+                # Only if the way has tags from configuration file
+                if x.get('k') in tags:
+                    t = x.get('k')
+                    # for nd in w.iterfind('./nd'):
+                    if nid in nids:
+                        relevant = True
+                        if t not in occurringtags:
+                            occurringtags.append(t)
+                        if cid not in cids:
+                            cids.append(cid)
+                        addchangeset(w, cid, changesets[t], t)
+                        changesets[t][cid]['nids'].add(nid)
+                        # changesets[t][cid]['wids'].add(wid)
+            if relevant:
+                wtags = w.findall(".//tag[@k]")
+                t = ''
+                for tag in wtags:
+                    if tag.get('k') in tags:
+                        # Add totals in stats object for output
+                        stats['nodes'][tag.get('k')] += 1
+                        t = tag.get('k')
+                version = int(w.get('version'))
+                addr_tags = getaddresstags(wtags)
+
     w.clear()
     root.clear()
 
@@ -189,7 +220,6 @@ if len(cids) > 1000:
 now = datetime.now()
 
 
-
 # ------------------------------------------
 # Functions for rendering html for email
 # ------------------------------------------
@@ -202,7 +232,10 @@ def renderChanges(each):
 def rendertemplate():
     body = ''
     summary = pystache.render(html_summary_tmpl, {
-            'stats': stats,
+            'total': stats['total'],
+            'addr': stats['addresses'],
+            'nodes': stats['nodes'],
+            'ways': stats['ways'],
             'date': now.strftime("%B %d, %Y")
         })
     # Add summary
@@ -223,20 +256,20 @@ html_version = rendertemplate()
 # ---------------------------------------------------
 # Outputs: email and html file
 # ---------------------------------------------------
-resp = requests.post(('https://api.mailgun.net/v2/%s/messages' % config.get('mailgun', 'domain')),
-    auth = ('api', config.get('mailgun', 'api_key')),
-    data = {
-            'from': 'Change Within <changewithin@%s>' % config.get('mailgun', 'domain'),
-            'to': config.get('email', 'recipients').split(),
-            'subject': 'OSM changes %s' % now.strftime("%B %d, %Y"),
-            "html": html_version,
-    })
+# resp = requests.post(('https://api.mailgun.net/v2/%s/messages' % config.get('mailgun', 'domain')),
+#     auth = ('api', config.get('mailgun', 'api_key')),
+#     data = {
+#             'from': 'Change Within <changewithin@%s>' % config.get('mailgun', 'domain'),
+#             'to': config.get('email', 'recipients').split(),
+#             'subject': 'OSM changes %s' % now.strftime("%B %d, %Y"),
+#             "html": html_version,
+#     })
 
 f_out = open('osm_change_report_%s.html' % now.strftime("%m-%d-%y"), 'w')
 f_out.write(html_version.encode('utf-8'))
 f_out.close()
 
 # Remove file
-os.unlink(osc_file)
+#os.unlink(osc_file)
 
 # print html_version

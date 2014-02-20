@@ -131,6 +131,7 @@ def hasaddresschange(gid, addr, version, elem):
             if a not in previous_addr: return True
     return False
 
+
 def loadChangeset(changeset):
     changeset['tag'] =  changeset['tag']
     changeset['wids'] = list(changeset['wids'])
@@ -151,7 +152,8 @@ def loadChangeset(changeset):
     changeset['map_link'] = 'http://www.openstreetmap.org/?lat=%s&lon=%s&zoom=%s&layers=M' % (extent['lat'], extent['lon'], extent['zoom'])
     changeset['addr_count'] = len(changeset['addr_chg_way']) + len(changeset['addr_chg_nd'])
     # the building count is determined by length of way IDs that got through 
-    changeset['count'] = len(changeset['wids'])
+    changeset['way_count'] = len(changeset['wids'])
+    changeset['node_count'] = len(changeset['nids'])
     return changeset
 
 def addchangeset(el, cid, changesets, t):
@@ -175,19 +177,31 @@ html_summary_tmpl = '''
 <div style='font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;color:#333;max-width:600px;'>
 <p style='float:right;'>{{date}}</p>
 <h1 style='margin-bottom:10px;'>Summary</h1>
-{{#stats}}
+{{#total}}
 <ul style='font-size:15px;line-height:17px;list-style:none;margin-left:0;padding-left:0;'>
 <li>Total changesets: <strong>{{total}}</strong></li>
-<li>Total address changes: <strong>{{addresses}}</strong></li>
-<li>Total building footprint changes: <strong>{{building}}</strong></li>
-<li>Total highway changes: <strong>{{highway}}</strong></li>
-<li>Total amenity changes: <strong>{{amenity}}</strong></li>
-
+{{#addrl}}
+<li>Total address changes: <strong>{{addr}}</strong></li>
+{{/addrl}}
 </ul>
+{{/total}}
+
+{{#ways}}
+<h3>Ways</h3>
+<ul style='font-size:15px;line-height:17px;list-style:none;margin-left:0;padding-left:0;'>
+<li>Total 'building' changes: <strong>{{building}}</strong></li>
+<li>Total 'highway' changes: <strong>{{highway}}</strong></li>
+<li>Total 'leisure' changes: <strong>{{leisure}}</strong></li>
+<li>Total 'man_made' changes: <strong>{{man_made}}</strong></li>
+<li>Total 'amenity' changes: <strong>{{amenity}}</strong></li>
+<li>Total 'tourism' changes: <strong>{{tourism}}</strong></li>
+<li>Total 'shop' changes: <strong>{{shop}}</strong></li>
+</ul>
+{{/ways}}
+
 {{#limit_exceed}}
 <p style='font-size:13px;font-style:italic;'>{{limit_exceed}}</p>
 {{/limit_exceed}}
-{{/stats}}
 </div>
 '''
 
@@ -209,10 +223,15 @@ html_changes_tmpl = '''
 <a href='http://openstreetmap.org/user/{{#details}}{{user}}{{/details}}' style='text-decoration:none;color:#3879D9;font-weight:bold;'>{{#details}}{{user}}{{/details}}</a>: {{comment}}
 </p>
 <p style='font-size:14px;line-height:17px;margin-bottom:0;'>
-{{#count}}Changed ways ({{count}}): {{#wids}}<a href='http://openstreetmap.org/browse/way/{{.}}/history' style='text-decoration:none;color:#3879D9;'>#{{.}}</a> {{/wids}}{{/count}}
+{{#way_count}}Changed ways ({{way_count}}): {{#wids}}<a href='http://openstreetmap.org/browse/way/{{.}}/history' style='text-decoration:none;color:#3879D9;'>#{{.}}</a> {{/wids}}{{/way_count}}
+</p>
+<p style='font-size:14px;line-height:17px;margin-bottom:0;'>
+{{#node_count}}Changed nodes ({{node_count}}): {{#nids}}<a href='http://openstreetmap.org/browse/node/{{.}}/history' style='text-decoration:none;color:#3879D9;'>#{{.}}</a> {{/nids}}{{/node_count}}
 </p>
 <p style='font-size:14px;line-height:17px;margin-top:5px;margin-bottom:20px;'>
-{{#addr_count}}Changed addresses ({{addr_count}}): {{#addr_chg_nd}}<a href='http://openstreetmap.org/browse/node/{{.}}/history' style='text-decoration:none;color:#3879D9;'>#{{.}}</a> {{/addr_chg_nd}}{{#addr_chg_way}}<a href='http://openstreetmap.org/browse/way/{{.}}/history' style='text-decoration:none;color:#3879D9;'>#{{.}}</a> {{/addr_chg_way}}{{/addr_count}}
+{{#addr_count}}Changed addresses ({{addr_count}}): {{#addr_chg_nd}}<a href='http://openstreetmap.org/browse/node/{{.}}/history' style='text-decoration:none;color:#3879D9;'>#{{.}}</a> {{/addr_chg_nd}}{{#addr_chg_way}}<a href='http://openstreetmap.org/browse/way/{{.}}/history' style='text-decoration:none;color:#3879D9;'>#{{.}}</a> 
+{{/addr_chg_way}}
+{{/addr_count}}
 </p>
 
 <a href='{{map_link}}'><img src='{{map_img}}' style='border:1px solid #ddd;' /></a>
